@@ -1,0 +1,27 @@
+name: Build FlipOS Google Voice
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract modified launcher
+        run: |
+          unzip -q kaiOS-googlevoice-final-system-keymap-source.zip
+          cd kaiOS-android-launcher-main
+          chmod +x gradlew
+
+      - name: Build APK
+        working-directory: kaiOS-android-launcher-main
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlipOS-GoogleVoice-Final
+          path: kaiOS-android-launcher-main/app/build/outputs/apk/debug/app-debug.apk
