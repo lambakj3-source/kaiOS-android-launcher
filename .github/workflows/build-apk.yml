@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply Google Voice version
+        run: |
+          unzip -q "kaiOS-android-launcher-google-voice.zip" -d /tmp/kaios
+          cp -a /tmp/kaios/kaiOS-android-launcher-main/. .
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
