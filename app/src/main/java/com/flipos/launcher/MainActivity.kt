@@ -258,13 +258,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Open the phone dialer, prefilled with the pressed digit (or * / #). */
-    private fun startDial(digit: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", digit, null)))
-        } catch (e: Exception) {
-            Toast.makeText(this, "No dialer available", Toast.LENGTH_SHORT).show()
-        }
-    }
+    private var dialNumber = StringBuilder()
+
+private fun startDial(digit: String) {
+    dialNumber.append(digit)
+    dateLine.text = dialNumber.toString()
+}
 
     private fun pickForIndex(index: Int) {
         pendingIndex = index
@@ -330,11 +329,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDialer() {
-        try {
-            startActivity(Intent(Intent.ACTION_DIAL))
-        } catch (e: Exception) {
-            Toast.makeText(this, "No dialer available", Toast.LENGTH_SHORT).show()
+    try {
+        val intent = Intent(Intent.ACTION_CALL).apply {
+            data = Uri.parse("tel:" + dialNumber.toString())
+            setClassName(
+                "com.google.android.apps.googlevoice",
+                "com.google.android.apps.voice.home.androidintents.AndroidCallIntentActivity"
+            )
         }
+        startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(this, "Google Voice call failed", Toast.LENGTH_SHORT).show()
+    }
     }
 
     /** The KaiOS "Notices" action: our own list screen, not the system shade. */
@@ -356,7 +362,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_SOFT_LEFT -> { openLeftKeyApp(); return true }
             KeyEvent.KEYCODE_SOFT_RIGHT -> { openRightKeyApp(); return true }
             KeyEvent.KEYCODE_MENU -> { openAppDrawer(); return true }
-            KeyEvent.KEYCODE_CALL -> { openDialer(); return true }
+            KeyEvent.KEYCODE_CALL, KeyEvent.KEYCODE_F11 -> { openDialer(); return true }
             KeyEvent.KEYCODE_BACK -> {
                 if (event.isLongPress) {
                     backLongPressHandled = true
