@@ -5,6 +5,14 @@
     <!-- Soft key labels -->
     <string name="softkey_notifications">Notices</string>
     <string name="softkey_contacts">Contacts</string>
+    <string name="dial_options">Options</string>
+    <string name="dial_save_contact">Save to Contacts</string>
+    <string name="dial_call_sim">Call with SIM</string>
+    <string name="dial_clear_number">Clear Number</string>
+    <string name="dial_cancel">Cancel</string>
+    <string name="dial_contacts_failed">Couldn\'t open Contacts</string>
+    <string name="dial_sim_failed">Couldn\'t place SIM call</string>
+    <string name="dial_voice_failed">Google Voice call failed</string>
     <string name="softkey_options">Options</string>
     <string name="softkey_open">Open</string>
     <string name="softkey_back">Back</string>

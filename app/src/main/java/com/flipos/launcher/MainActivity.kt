@@ -62,6 +62,9 @@ class MainActivity : AppCompatActivity() {
     private val weekdayFmt = SimpleDateFormat("EEEE", Locale.getDefault())
     private val dateFmt = SimpleDateFormat("MMM d", Locale.getDefault())
 
+    /** Digits entered on the Home screen while the temporary number-entry state is active. */
+    private var dialNumber = StringBuilder()
+
     /** Rail index awaiting an app from the picker (-1 = none). */
     private var pendingIndex = -1
 
@@ -83,6 +86,15 @@ class MainActivity : AppCompatActivity() {
 
     private val timeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) = updateClock()
+    }
+
+    /** The physical red/power key is handled by the system, so Home does not receive KEYCODE_POWER.
+     * Clearing on screen-off gives number entry the expected red-button-cancels behavior.
+     */
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) clearDialNumber()
+        }
     }
 
     private val notifListener: () -> Unit = {
@@ -129,7 +141,9 @@ class MainActivity : AppCompatActivity() {
             adapter.setItemHeightPx(available / HomeRailAdapter.SLOTS_VISIBLE)
         }
 
-        findViewById<TextView>(R.id.softkey_left).setOnClickListener { openLeftKeyApp() }
+        findViewById<TextView>(R.id.softkey_left).setOnClickListener {
+            if (isNumberEntryActive()) openNumberOptions() else openLeftKeyApp()
+        }
         findViewById<TextView>(R.id.softkey_right).setOnClickListener { openRightKeyApp() }
         appMenuButton = findViewById<ImageView>(R.id.softkey_center).apply {
             setOnClickListener { openAppDrawer() }
@@ -157,7 +171,9 @@ class MainActivity : AppCompatActivity() {
         // Back opens the app drawer; long-pressing it launches the configured app instead
         // (see onKeyDown/onKeyUp, which suppress this callback when a long-press fires).
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = openAppDrawer()
+            override fun handleOnBackPressed() {
+                if (isNumberEntryActive()) deleteLastDialDigit() else openAppDrawer()
+            }
         })
 
         updateClock()
@@ -173,6 +189,7 @@ class MainActivity : AppCompatActivity() {
                 addAction(Intent.ACTION_TIMEZONE_CHANGED)
             },
         )
+        registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         updateClock()
         refreshShortcuts()
         refreshLeftKeyLabel()
@@ -191,6 +208,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterReceiver(timeReceiver)
+        unregisterReceiver(screenOffReceiver)
         NotificationCounts.removeListener(notifListener)
     }
 
@@ -207,7 +225,7 @@ class MainActivity : AppCompatActivity() {
             clock.text = time12.format(now)
         }
         weekday.text = weekdayFmt.format(now)
-        dateLine.text = dateFmt.format(now)
+        if (!isNumberEntryActive()) dateLine.text = dateFmt.format(now)
     }
 
     private fun refreshShortcuts() {
@@ -256,14 +274,6 @@ class MainActivity : AppCompatActivity() {
             }
             .show()
     }
-
-    /** Open the phone dialer, prefilled with the pressed digit (or * / #). */
-    private var dialNumber = StringBuilder()
-
-private fun startDial(digit: String) {
-    dialNumber.append(digit)
-    dateLine.text = dialNumber.toString()
-}
 
     private fun pickForIndex(index: Int) {
         pendingIndex = index
@@ -322,6 +332,10 @@ private fun startDial(digit: String) {
     }
 
     private fun refreshLeftKeyLabel() {
+        if (isNumberEntryActive()) {
+            findViewById<TextView>(R.id.softkey_left).text = getString(R.string.dial_options)
+            return
+        }
         val key = prefs.getLeftKeyApp()
         val label = key?.let { AppRepository.resolveComponent(this, it)?.label }
             ?: getString(R.string.softkey_notifications)
@@ -329,18 +343,97 @@ private fun startDial(digit: String) {
     }
 
     private fun openDialer() {
-    try {
-        val intent = Intent(Intent.ACTION_CALL).apply {
-            data = Uri.parse("tel:" + dialNumber.toString())
-            setClassName(
-                "com.google.android.apps.googlevoice",
-                "com.google.android.apps.voice.home.androidintents.AndroidCallIntentActivity"
-            )
+        val number = dialNumber.toString()
+        if (number.isEmpty()) return
+        try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$number")
+                setClassName(
+                    "com.google.android.apps.googlevoice",
+                    "com.google.android.apps.voice.home.androidintents.AndroidCallIntentActivity"
+                )
+            }
+            startActivity(intent)
+            clearDialNumber()
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.dial_voice_failed, Toast.LENGTH_SHORT).show()
         }
-        startActivity(intent)
-    } catch (e: Exception) {
-        Toast.makeText(this, "Google Voice call failed", Toast.LENGTH_SHORT).show()
     }
+
+    private fun isNumberEntryActive(): Boolean = dialNumber.isNotEmpty()
+
+    private fun startDial(digit: String) {
+        if (dialNumber.isEmpty()) {
+            refreshLeftKeyLabel()
+        }
+        dialNumber.append(digit)
+        dateLine.text = dialNumber.toString()
+        refreshLeftKeyLabel()
+    }
+
+    private fun deleteLastDialDigit() {
+        if (dialNumber.isEmpty()) return
+        dialNumber.deleteCharAt(dialNumber.length - 1)
+        if (dialNumber.isEmpty()) {
+            updateClock()
+            refreshLeftKeyLabel()
+        } else {
+            dateLine.text = dialNumber.toString()
+        }
+    }
+
+    private fun clearDialNumber() {
+        if (dialNumber.isEmpty()) return
+        dialNumber.clear()
+        updateClock()
+        refreshLeftKeyLabel()
+    }
+
+    private fun openNumberOptions() {
+        if (dialNumber.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle(dialNumber.toString())
+            .setItems(arrayOf(
+                getString(R.string.dial_save_contact),
+                getString(R.string.dial_call_sim),
+                getString(R.string.dial_clear_number),
+                getString(R.string.dial_cancel),
+            )) { _, which ->
+                when (which) {
+                    0 -> saveDialNumberToContacts()
+                    1 -> callDialNumberWithSim()
+                    2 -> clearDialNumber()
+                }
+            }
+            .show()
+    }
+
+    private fun saveDialNumberToContacts() {
+        val number = dialNumber.toString()
+        try {
+            val intent = Intent(Intent.ACTION_INSERT).apply {
+                type = ContactsContract.Contacts.CONTENT_TYPE
+                putExtra(ContactsContract.Intents.Insert.PHONE, number)
+            }
+            startActivity(intent)
+            clearDialNumber()
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.dial_contacts_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun callDialNumberWithSim() {
+        val number = dialNumber.toString()
+        if (number.isEmpty()) return
+        try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:$number")
+            }
+            startActivity(intent)
+            clearDialNumber()
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.dial_sim_failed, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** The KaiOS "Notices" action: our own list screen, not the system shade. */
@@ -359,11 +452,21 @@ private fun startDial(digit: String) {
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9,
             KeyEvent.KEYCODE_STAR,
             KeyEvent.KEYCODE_POUND -> return true
-            KeyEvent.KEYCODE_SOFT_LEFT -> { openLeftKeyApp(); return true }
+            KeyEvent.KEYCODE_SOFT_LEFT -> { if (isNumberEntryActive()) openNumberOptions() else openLeftKeyApp(); return true }
             KeyEvent.KEYCODE_SOFT_RIGHT -> { openRightKeyApp(); return true }
-            KeyEvent.KEYCODE_MENU -> { openAppDrawer(); return true }
+            KeyEvent.KEYCODE_MENU -> { if (isNumberEntryActive()) openNumberOptions() else openAppDrawer(); return true }
             KeyEvent.KEYCODE_CALL, KeyEvent.KEYCODE_F11 -> { openDialer(); return true }
+            KeyEvent.KEYCODE_ENDCALL, KeyEvent.KEYCODE_HOME -> {
+                if (isNumberEntryActive()) {
+                    clearDialNumber()
+                    return true
+                }
+            }
             KeyEvent.KEYCODE_BACK -> {
+                if (isNumberEntryActive()) {
+                    if (event.isLongPress) clearDialNumber() else deleteLastDialDigit()
+                    return true
+                }
                 if (event.isLongPress) {
                     backLongPressHandled = true
                     launchBackLongPressApp()
