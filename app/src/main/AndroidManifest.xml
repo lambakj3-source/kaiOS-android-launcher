@@ -4,6 +4,7 @@
 
     <!-- Needed for WallpaperManager.setBitmap() in the bundled Wallpaper Picker. -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
 
     <!--
       A launcher only needs to see launchable activities and the dialer.
