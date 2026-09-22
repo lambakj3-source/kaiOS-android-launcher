@@ -88,6 +88,15 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) = updateClock()
     }
 
+    /** The physical red/power key is handled by the system, so Home does not receive KEYCODE_POWER.
+     * Clearing on screen-off gives number entry the expected red-button-cancels behavior.
+     */
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) clearDialNumber()
+        }
+    }
+
     private val notifListener: () -> Unit = {
         runOnUiThread {
             updateNotifSummary()
@@ -180,6 +189,7 @@ class MainActivity : AppCompatActivity() {
                 addAction(Intent.ACTION_TIMEZONE_CHANGED)
             },
         )
+        registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
         updateClock()
         refreshShortcuts()
         refreshLeftKeyLabel()
@@ -198,6 +208,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         unregisterReceiver(timeReceiver)
+        unregisterReceiver(screenOffReceiver)
         NotificationCounts.removeListener(notifListener)
     }
 
